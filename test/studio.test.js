@@ -10,6 +10,30 @@ import { parsePayload,ingest } from '../lib/intake.js';
 import { publishPost } from '../lib/publisher.js';
 import { normalizeUrl, publicAddress,saveImage } from '../lib/images.js';
 import { createApp } from '../server.js';
+import { cairoTime,schedulePost,processDue } from '../lib/scheduler.js';
+
+test('Cairo scheduling respects DST, approval, due times and missed deadlines',async t=>{
+  assert.equal(cairoTime('2026-12-01T20:00'),'2026-12-01T18:00:00.000Z');
+  assert.equal(cairoTime('2026-07-01T20:00'),'2026-07-01T17:00:00.000Z');
+  assert.throws(()=>cairoTime('2026-02-30T20:00'));
+  const {store,buffer}=await fixture(t);
+  await ingest(store,payload,[{filename:'post_1.png',contentType:'image/png',content:buffer}]);
+  store.saveSettings({...store.settings(),pageId:'123',facebookToken:'secret'});
+  const p=store.db.prepare('SELECT * FROM posts').get(),at=Date.parse(cairoTime('2030-12-01T20:00'));
+  schedulePost(store,p.id,'2030-12-01T20:00',at-600000);
+  let calls=0;const request=async()=>{calls++;return Response.json({id:'987'});};
+  await assert.rejects(publishPost(store,p.id,request));
+  await processDue(store,request,at-1);assert.equal(calls,0);
+  await processDue(store,request,at);await processDue(store,request,at+1000);assert.equal(calls,1);
+  store.db.prepare("UPDATE posts SET status='pending' WHERE id=?").run(p.id);
+  schedulePost(store,p.id,'2030-12-01T20:00',at-600000);
+  await processDue(store,request,at+120000);assert.equal(calls,1);
+  assert.equal(store.db.prepare('SELECT status FROM posts').get().status,'missed');
+  schedulePost(store,p.id,'2030-12-01T20:00',at-600000);
+  store.saveSettings({...store.settings(),pageId:'456'});
+  await processDue(store,request,at);assert.equal(calls,1);
+  assert.equal(store.db.prepare('SELECT status FROM posts').get().status,'failed');
+});
 
 async function cleanFixture(directory){const parent=join(tmpdir(),'');if(!directory.startsWith(parent) || !directory.slice(parent.length).replace(/^[/\\]/,'').startsWith('nuvexa-'))throw new Error('Unsafe test cleanup path');await rm(directory,{recursive:true,force:true});}
 const payload={brand:'NUVEXA PROPERTIES',date:'2026-10-07',posts:[{post_id:1,theme:'Luxury',caption:'Luxury 🏡\n#NUVEXA'}]};

@@ -1,5 +1,5 @@
 const $=selector=>document.querySelector(selector);
-const labels={pending:'بانتظار المراجعة',published:'تم النشر',failed:'فشل النشر',uncertain:'نتيجة غير مؤكدة',publishing:'جاري النشر',rejected:'مرفوض'};
+const labels={scheduled:'مجدول',missed:'فات الموعد',pending:'بانتظار المراجعة',published:'تم النشر',failed:'فشل النشر',uncertain:'نتيجة غير مؤكدة',publishing:'جاري النشر',rejected:'مرفوض'};
 let csrf='',settings={},posts=[],filter='pending',selected=null,previewUrl=null,toastTimer;
 const escape=value=>String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function toast(message,error=false){clearTimeout(toastTimer);$('#toast').textContent=message;$('#toast').className='toast'+(error?' error':'');toastTimer=setTimeout(()=>$('#toast').classList.add('hidden'),6500);}
@@ -9,19 +9,19 @@ async function api(path,{method='GET',body}={}) {
   const data=await r.json();if(!r.ok)throw new Error(data.error || 'تعذر تنفيذ العملية.');return data;
 }
 async function busy(button,work){const old=button.textContent;button.disabled=true;button.textContent='لحظة…';try{return await work();}catch(e){toast(e.message,true);return null;}finally{button.disabled=false;button.textContent=old;}}
-function formatDate(value){return new Intl.DateTimeFormat('ar-EG',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value));}
+function formatDate(value){return new Intl.DateTimeFormat('ar-EG',{dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Cairo'}).format(new Date(value));}
 function changeView(name){document.querySelectorAll('.view').forEach(v=>v.classList.toggle('hidden',v.id!==name+'-view'));document.querySelectorAll('.nav-item').forEach(v=>v.classList.toggle('active',v.dataset.view===name));if(name==='activity')loadActivity().catch(e=>toast(e.message,true));}
-const attention=p=>!!p.issue || ['failed','uncertain','publishing'].includes(p.status);
+const attention=p=>!!p.issue || ['failed','uncertain','publishing','missed'].includes(p.status);
 function renderPosts(){
   const pending=posts.filter(p=>p.status==='pending').length;
   $('#stat-pending').textContent=pending;$('#tab-pending').textContent=pending;$('#nav-count').textContent=pending;
   $('#stat-published').textContent=posts.filter(p=>p.status==='published').length;$('#stat-issues').textContent=posts.filter(attention).length;
   const term=$('#search').value.trim().toLowerCase();
   const visible=posts.filter(p=>(filter==='all' || (filter==='attention'?attention(p):p.status===filter)) && (p.caption+' '+p.theme).toLowerCase().includes(term));
-  $('#collection-title').textContent=({pending:'قائمة المراجعة',published:'بوستات وصلت للصفحة',attention:'محتوى يحتاج انتباهك',rejected:'بوستات مرفوضة',all:'كل البوستات'})[filter];
+  $('#collection-title').textContent=({scheduled:'بوستات مجدولة بتوقيت القاهرة',pending:'قائمة المراجعة',published:'بوستات وصلت للصفحة',attention:'محتوى يحتاج انتباهك',rejected:'بوستات مرفوضة',all:'كل البوستات'})[filter];
   $('#empty').classList.toggle('hidden',visible.length>0);
   $('#empty h2').textContent=posts.length?'مفيش بوستات في القائمة دي.':'مساحة لبوستك الجاي.';
-  $('#post-grid').innerHTML=visible.map(p=>`<article class="post-card">${p.image?`<img class="post-image" src="/images/${escape(p.image)}" alt="${escape(p.theme || 'صورة البوست')}" loading="lazy">`:'<div class="missing-image">▧ صورة محتاجة إضافة</div>'}<div class="post-content"><div class="post-meta"><span class="badge ${attention(p)?'warning':p.status}">${escape(p.issue && p.status==='pending'?'الصورة تحتاج إصلاح':labels[p.status])}</span><span>${escape(p.date)} · #${escape(p.source_post_id)}</span></div><h3 dir="auto">${escape(p.theme || 'بوست NUVEXA')}</h3><p dir="auto">${escape(p.caption)}</p><div class="card-bottom"><small>${p.image?'✓ صورة محفوظة':'○ صورة غير متاحة'}</small><button class="button secondary" data-review="${escape(p.id)}">${p.status==='published'?'عرض التفاصيل':'افتح المراجعة'} ←</button></div></div></article>`).join('');
+  $('#post-grid').innerHTML=visible.map(p=>`<article class="post-card">${p.image?`<img class="post-image" src="/images/${escape(p.image)}" alt="${escape(p.theme || 'صورة البوست')}" loading="lazy">`:'<div class="missing-image">▧ صورة محتاجة إضافة</div>'}<div class="post-content"><div class="post-meta"><span class="badge ${attention(p)?'warning':p.status}">${escape(p.issue && p.status==='pending'?'الصورة تحتاج إصلاح':labels[p.status])}</span><span>${escape(p.date)} · #${escape(p.source_post_id)}</span></div><h3 dir="auto">${escape(p.theme || 'بوست NUVEXA')}</h3><p dir="auto">${escape(p.caption)}</p><div class="card-bottom"><small>${p.status==='scheduled'?'◷ '+formatDate(p.scheduled_at):p.image?'✓ صورة محفوظة':'○ صورة غير متاحة'}</small><button class="button secondary" data-review="${escape(p.id)}">${p.status==='published'?'عرض التفاصيل':'افتح المراجعة'} ←</button></div></div></article>`).join('');
 }
 function renderSettings(){
   const form=$('#settings-form');for(const name of ['mailbox','allowedSender','pageId','apiVersion','clientId'])form.elements[name].value=settings[name] || '';
@@ -49,12 +49,16 @@ function setPreview(){
 }
 function openReview(id){
   selected=posts.find(p=>p.id===id);if(!selected)return;
-  const editable=['pending','failed','rejected'].includes(selected.status);
+  const editable=['pending','failed','rejected','missed'].includes(selected.status);
   $('#review-form').reset();$('#review-title').textContent=selected.theme || 'مراجعة البوست';$('#review-caption').value=selected.caption;
   $('#review-caption').disabled=!editable;$('#review-file').disabled=!editable;$('#review-form').elements.imageUrl.disabled=!editable;$('#save-edit').classList.toggle('hidden',!editable);
   $('#review-issue').textContent=selected.issue || '';$('#review-issue').classList.toggle('hidden',!selected.issue);
-  $('#review-actions').classList.toggle('hidden',!['pending','failed'].includes(selected.status));
+  $('#review-actions').classList.toggle('hidden',!['pending','failed','missed'].includes(selected.status));
   $('#approve').disabled=!settings.pageId || !settings.hasFacebookToken || !selected.image || !!selected.issue;
+  $('#schedule-panel').classList.toggle('hidden',!['pending','failed','missed'].includes(selected.status));
+  $('#scheduled-info').classList.toggle('hidden',selected.status!=='scheduled');
+  $('#scheduled-description').textContent=selected.scheduled_at?'موعد النشر: '+formatDate(selected.scheduled_at)+' بتوقيت القاهرة. للتعديل ألغِ الجدولة أولًا.':'';
+  $('#schedule-post').disabled=$('#approve').disabled;
   $('#review-checks').innerHTML=`<span>${selected.image?'✓ الصورة اتفحصت واتحفظت محليًا':'○ أضف صورة صالحة قبل النشر'}</span><span>✓ الكلام موجود · راجعه بنفسك قبل الموافقة</span><span>${settings.pageId && settings.hasFacebookToken?'✓ صفحة النشر: '+escape(settings.pageId):'○ أكمل ربط Facebook من الإعدادات'}</span><span>✓ منع تكرار البوست مفعّل</span>`;
   $('#reconcile').classList.toggle('hidden',selected.status!=='uncertain');$('#photo-id').value='';
   $('#facebook-link').classList.toggle('hidden',selected.status!=='published');if(selected.status==='published')$('#facebook-link').href='https://www.facebook.com/'+encodeURIComponent(selected.facebook_post_id || selected.photo_id);
@@ -89,3 +93,15 @@ async function reconcile(result){if(!(await confirmAction('تسجيل نتيجة
 $('#confirm-published').onclick=()=>busy($('#confirm-published'),()=>reconcile('published'));$('#confirm-not-published').onclick=()=>busy($('#confirm-not-published'),()=>reconcile('not_published'));
 refresh().then(()=>{renderSettings();const params=new URLSearchParams(location.search);if(params.get('gmail')){toast(params.get('gmail')==='connected'?'تم ربط Gmail بنجاح.':'تعذر ربط Gmail. تحقق من بيانات Google والحساب المختار.',params.get('gmail')!=='connected');history.replaceState({},'',location.pathname);changeView('settings');}}).catch(e=>toast(e.message,true));
 setInterval(()=>refresh().catch(()=>{}),30000);
+
+$('#schedule-post').onclick=()=>busy($('#schedule-post'),async()=>{
+  const localTime=$('#schedule-time').value;
+  if(!localTime)throw new Error('اختار تاريخ ووقت النشر.');
+  await saveEdit();$('#schedule-time').value=localTime;
+  if(!(await confirmAction('تأكيد الجدولة','هيتنشر البوست تلقائيًا يوم '+localTime.replace('T',' الساعة ')+' بتوقيت القاهرة على صفحة '+settings.pageId+'. خلي الجهاز والبرنامج شغالين.')))return;
+  const id=selected.id;await api('/posts/'+id+'/schedule',{method:'POST',body:{approved:true,localTime}});
+  await refresh();openReview(id);toast('تمت جدولة البوست بتوقيت القاهرة.');
+});
+$('#cancel-schedule').onclick=()=>busy($('#cancel-schedule'),async()=>{
+  const id=selected.id;await api('/posts/'+id+'/cancel-schedule',{method:'POST',body:{}});await refresh();openReview(id);toast('اتلغت الجدولة. تقدر تعدّل وتختار موعد جديد.');
+});
