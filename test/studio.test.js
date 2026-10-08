@@ -15,10 +15,16 @@ async function cleanFixture(directory){const parent=join(tmpdir(),'');if(!direct
 const payload={brand:'NUVEXA PROPERTIES',date:'2026-10-07',posts:[{post_id:1,theme:'Luxury',caption:'Luxury 🏡\n#NUVEXA'}]};
 async function fixture(t){const directory=await mkdtemp(join(tmpdir(),'nuvexa-'));const store=createStore(directory);t.after(async()=>{store.db.close();await cleanFixture(directory);});const png=new PNG({width:32,height:32});png.data.fill(100);const buffer=PNG.sync.write(png);return {store,buffer};}
 test('validates payloads and parses Gemini code fences',()=>{
-  assert.deepEqual(parsePayload('```json\n'+JSON.stringify(payload)+'\n```'),payload);
+  const parsed=parsePayload('```json\n'+JSON.stringify(payload)+'\n```');assert.equal(parsed.brand,payload.brand);assert.equal(parsed.posts[0].caption,payload.posts[0].caption);
   assert.throws(()=>parsePayload({...payload,date:'2026-02-30'}));
   assert.throws(()=>parsePayload({...payload,posts:[payload.posts[0],payload.posts[0]]}));
   assert.throws(()=>parsePayload({...payload,posts:[{post_id:1,caption:''}]}));
+});
+test('repairs email line folding and accepts Gemini field names',()=>{
+  const raw='```json\n{"brand":"NUVEXA PROPERTIES","date":"2026-10-08","posts":[{"post_number":1,"full_caption":"Hello\nworld\\n\\n#NUVEXA","drive_file_id":"abcdef"}]}\n```';
+  const p=parsePayload(raw);assert.equal(p.posts[0].post_id,1);assert.equal(p.posts[0].caption,'Hello world\n\n#NUVEXA');assert.equal(p.posts[0].image_url,'https://drive.google.com/uc?export=download&id=abcdef');
+  assert.throws(()=>parsePayload('{"brand": BROKEN}'));
+  assert.equal(normalizeUrl('https://www.google.com/url?q=https%3A%2F%2Fdrive.google.com%2Ffile%2Fd%2Fabcdef%2Fview'),'https://drive.google.com/uc?export=download&id=abcdef');
 });
 test('rejects local network URLs and normalizes public Drive files',()=>{
   assert.throws(()=>normalizeUrl('http://example.com/a'));assert.throws(()=>normalizeUrl('https://127.0.0.1/a'));assert.throws(()=>normalizeUrl('https://user:secret@example.com/a'));

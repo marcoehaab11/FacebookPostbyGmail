@@ -50,7 +50,7 @@ export function createApp({directory=join(root,'data'),port=3210,request=fetch}=
     catch{res.redirect('/?gmail=failed');}
   });
   app.post('/api/google/disconnect',(req,res)=>{const s=store.settings();delete s.googleTokens;delete s.connectedEmail;store.saveSettings(s);res.json({ok:true});});
-  app.post('/api/sync',async(req,res)=>res.json(await gmail.sync()));
+  app.post('/api/sync',async(req,res)=>res.json(await gmail.sync({retryInvalid:true})));
   app.post('/api/import',upload.array('images',10),async(req,res)=>res.json(await ingest(store,req.body.payload,req.files)));
   app.patch('/api/posts/:id',upload.single('image'),async(req,res)=>{
     const p=store.db.prepare('SELECT * FROM posts WHERE id=?').get(req.params.id);
