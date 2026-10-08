@@ -30,7 +30,7 @@ export function createApp({directory=join(root,'data'),port=3210,request=fetch}=
   app.use(express.json({limit:'512kb'}));
   const safeSettings=()=>{const s=store.settings();return {mailbox:s.mailbox,allowedSender:s.allowedSender,pageId:s.pageId,apiVersion:s.apiVersion,clientId:s.clientId,autoSync:s.autoSync,hasClientSecret:!!s.clientSecret,hasFacebookToken:!!s.facebookToken,connectedEmail:s.connectedEmail || null,redirectUri:baseUrl+'/auth/google/callback'};};
   app.get('/api/bootstrap',(req,res)=>res.json({csrf,settings:safeSettings(),sync:gmail.state()}));
-  app.get('/api/posts',(req,res)=>res.json(store.db.prepare('SELECT * FROM posts ORDER BY created_at DESC').all()));
+  app.get('/api/posts',(req,res)=>res.json(store.db.prepare("SELECT * FROM posts WHERE status!='deleted' ORDER BY created_at DESC").all()));
   app.get('/api/events',(req,res)=>res.json({events:store.db.prepare('SELECT * FROM events ORDER BY id DESC LIMIT 100').all(),emails:store.db.prepare('SELECT * FROM emails ORDER BY created_at DESC LIMIT 30').all()}));
   app.post('/api/settings',(req,res)=>{
     const b=req.body,s=store.settings();
@@ -63,6 +63,12 @@ export function createApp({directory=join(root,'data'),port=3210,request=fetch}=
     const updated=store.db.prepare("UPDATE posts SET caption=?,image=?,issue=?,status='pending',updated_at=? WHERE id=? AND updated_at=? AND status IN ('pending','failed','rejected','missed')").run(caption,image,issue,new Date().toISOString(),p.id,p.updated_at);
     if(!updated.changes)throw new Error('حالة البوست اتغيرت. أعد فتحه للمراجعة.');
     store.event(p.id,'edited','تم حفظ التعديلات وإعادته للمراجعة.');res.json({ok:true});
+  });
+  app.delete('/api/posts/:id',(req,res)=>{
+    const r=store.db.prepare("UPDATE posts SET status='deleted',scheduled_at=NULL,updated_at=? WHERE id=? AND status NOT IN ('publishing','deleted')").run(new Date().toISOString(),req.params.id);
+    if(!r.changes)throw new Error('لا يمكن حذف البوست أثناء النشر أو بعد حذفه.');
+    store.event(req.params.id,'deleted','تم حذف البوست من البرنامج وإلغاء أي جدولة. نسخة Facebook إن وجدت تظل على الصفحة.');
+    res.json({ok:true});
   });
   app.post('/api/posts/:id/reject',(req,res)=>{
     const r=store.db.prepare("UPDATE posts SET status='rejected',updated_at=? WHERE id=? AND status IN ('pending','failed')").run(new Date().toISOString(),req.params.id);

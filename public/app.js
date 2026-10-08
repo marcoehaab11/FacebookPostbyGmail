@@ -15,13 +15,14 @@ const attention=p=>!!p.issue || ['failed','uncertain','publishing','missed'].inc
 function renderPosts(){
   const pending=posts.filter(p=>p.status==='pending').length;
   $('#stat-pending').textContent=pending;$('#tab-pending').textContent=pending;$('#nav-count').textContent=pending;
+  for(const name of ['scheduled','published','attention','rejected','all'])$('#tab-'+name).textContent=posts.filter(p=>name==='all' || (name==='attention'?attention(p):p.status===name)).length;
   $('#stat-published').textContent=posts.filter(p=>p.status==='published').length;$('#stat-issues').textContent=posts.filter(attention).length;
   const term=$('#search').value.trim().toLowerCase();
   const visible=posts.filter(p=>(filter==='all' || (filter==='attention'?attention(p):p.status===filter)) && (p.caption+' '+p.theme).toLowerCase().includes(term));
   $('#collection-title').textContent=({scheduled:'بوستات مجدولة بتوقيت القاهرة',pending:'قائمة المراجعة',published:'بوستات وصلت للصفحة',attention:'محتوى يحتاج انتباهك',rejected:'بوستات مرفوضة',all:'كل البوستات'})[filter];
   $('#empty').classList.toggle('hidden',visible.length>0);
   $('#empty h2').textContent=posts.length?'مفيش بوستات في القائمة دي.':'مساحة لبوستك الجاي.';
-  $('#post-grid').innerHTML=visible.map(p=>`<article class="post-card">${p.image?`<img class="post-image" src="/images/${escape(p.image)}" alt="${escape(p.theme || 'صورة البوست')}" loading="lazy">`:'<div class="missing-image">▧ صورة محتاجة إضافة</div>'}<div class="post-content"><div class="post-meta"><span class="badge ${attention(p)?'warning':p.status}">${escape(p.issue && p.status==='pending'?'الصورة تحتاج إصلاح':labels[p.status])}</span><span>${escape(p.date)} · #${escape(p.source_post_id)}</span></div><h3 dir="auto">${escape(p.theme || 'بوست NUVEXA')}</h3><p dir="auto">${escape(p.caption)}</p><div class="card-bottom"><small>${p.status==='scheduled'?'◷ '+formatDate(p.scheduled_at):p.image?'✓ صورة محفوظة':'○ صورة غير متاحة'}</small><button class="button secondary" data-review="${escape(p.id)}">${p.status==='published'?'عرض التفاصيل':'افتح المراجعة'} ←</button></div></div></article>`).join('');
+  $('#post-grid').innerHTML=visible.map(p=>`<article class="post-card">${p.image?`<img class="post-image" src="/images/${escape(p.image)}" alt="${escape(p.theme || 'صورة البوست')}" loading="lazy">`:'<div class="missing-image">▧ صورة محتاجة إضافة</div>'}<div class="post-content"><div class="post-meta"><span class="badge ${attention(p)?'warning':p.status}">${escape(p.issue && p.status==='pending'?'الصورة تحتاج إصلاح':labels[p.status])}</span><span>${escape(p.date)} · #${escape(p.source_post_id)}</span></div><h3 dir="auto">${escape(p.theme || 'بوست NUVEXA')}</h3><p dir="auto">${escape(p.caption)}</p><div class="card-bottom"><small>${p.status==='scheduled'?'◷ '+formatDate(p.scheduled_at):p.image?'✓ صورة محفوظة':'○ صورة غير متاحة'}</small><button class="button secondary" data-review="${escape(p.id)}">${p.status==='published'?'عرض التفاصيل':'افتح المراجعة'} ←</button>${p.status!=='publishing'?`<button class="button danger" data-delete="${escape(p.id)}">حذف</button>`:''}</div></div></article>`).join('');
 }
 function renderSettings(){
   const form=$('#settings-form');for(const name of ['mailbox','allowedSender','pageId','apiVersion','clientId'])form.elements[name].value=settings[name] || '';
@@ -72,6 +73,10 @@ document.addEventListener('click',e=>{
   const close=e.target.closest('[data-close]');if(close)$('#'+close.dataset.close).close();
   const tab=e.target.closest('[data-filter]');if(tab){filter=tab.dataset.filter;document.querySelectorAll('[data-filter]').forEach(b=>b.classList.toggle('selected',b===tab));renderPosts();}
   const card=e.target.closest('[data-review]');if(card)openReview(card.dataset.review);
+  const remove=e.target.closest('[data-delete]');if(remove)busy(remove,async()=>{
+    if(!(await confirmAction('حذف البوست؟','هيتشال من البرنامج وتتوقف جدولته. لو اتنشر على Facebook هيفضل موجود على الصفحة.')))return;
+    await api('/posts/'+remove.dataset.delete,{method:'DELETE'});await refresh();toast('تم حذف البوست من البرنامج.');
+  });
 });
 $('#search').addEventListener('input',renderPosts);$('#open-import').onclick=openImport;$('#empty-import').onclick=openImport;
 $('#sync').onclick=()=>busy($('#sync'),async()=>{const r=await api('/sync',{method:'POST',body:{}});toast(r.busy?'المزامنة شغالة بالفعل.':`وصل ${r.added} بوست جديد للمراجعة.`);await refresh();});

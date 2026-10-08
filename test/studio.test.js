@@ -95,4 +95,10 @@ test('HTTP blocks cross-origin mutation, hides secrets, and requires approval',a
   const noApproval=await fetch(base+'/api/posts/none/publish',{method:'POST',headers,body:'{}'});assert.equal(noApproval.status,400);assert.match((await noApproval.json()).error,/الموافقة/);
   const form=new FormData();form.set('payload',JSON.stringify(payload));const imported=await fetch(base+'/api/import',{method:'POST',headers:{Origin:base,'X-CSRF-Token':bootstrap.csrf},body:form});assert.equal(imported.status,200);
   const posts=await(await fetch(base+'/api/posts')).json();assert.equal(posts[0].status,'pending');assert(posts[0].issue);
+  studio.store.db.prepare("UPDATE posts SET status='scheduled',scheduled_at=? WHERE id=?").run('2030-12-01T18:00:00.000Z',posts[0].id);
+  const deleted=await fetch(base+'/api/posts/'+posts[0].id,{method:'DELETE',headers});assert.equal(deleted.status,200);
+  assert.deepEqual(await(await fetch(base+'/api/posts')).json(),[]);
+  const tombstone=studio.store.db.prepare('SELECT * FROM posts WHERE id=?').get(posts[0].id);
+  assert.equal(tombstone.status,'deleted');assert.equal(tombstone.scheduled_at,null);
+  assert.equal((await ingest(studio.store,payload)).duplicates,1);
 });
