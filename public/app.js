@@ -94,6 +94,14 @@ $('#confirm-published').onclick=()=>busy($('#confirm-published'),()=>reconcile('
 refresh().then(()=>{renderSettings();const params=new URLSearchParams(location.search);if(params.get('gmail')){toast(params.get('gmail')==='connected'?'تم ربط Gmail بنجاح.':'تعذر ربط Gmail. تحقق من بيانات Google والحساب المختار.',params.get('gmail')!=='connected');history.replaceState({},'',location.pathname);changeView('settings');}}).catch(e=>toast(e.message,true));
 setInterval(()=>refresh().catch(()=>{}),30000);
 
+$('#suggest-time').onclick=()=>{
+  // Compare Cairo wall-clock values; never depend on the computer's timezone.
+  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Africa/Cairo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(new Date(Date.now()+60000)).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
+  let day=`${parts.year}-${parts.month}-${parts.day}`;
+  if(Number(parts.hour)>=20){const next=new Date(day+'T12:00:00Z');next.setUTCDate(next.getUTCDate()+1);day=next.toISOString().slice(0,10);}
+  $('#schedule-time').value=day+'T20:00';
+  toast('اخترنا أقرب ٨ مساءً بتوقيت القاهرة. اضغط «وافق وجدول» لتأكيد الموعد.');
+};
 $('#schedule-post').onclick=()=>busy($('#schedule-post'),async()=>{
   const localTime=$('#schedule-time').value;
   if(!localTime)throw new Error('اختار تاريخ ووقت النشر.');
