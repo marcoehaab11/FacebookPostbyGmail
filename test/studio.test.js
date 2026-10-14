@@ -66,6 +66,19 @@ test('intake stays pending, deduplicates and retains missing images for repair',
   const jpg=jpeg.encode({width:2,height:2,data:Buffer.alloc(16,255)},90).data;
   assert.match(await saveImage(Buffer.from(jpg),store.directory),/\.jpg$/);
 });
+
+test('reused Gemini numbers accept new captions and keep identical edited or deleted posts deduplicated',async t=>{
+  const {store,buffer}=await fixture(t);
+  const files=[{filename:'post_1.png',contentType:'image/png',content:buffer}];
+  assert.equal((await ingest(store,payload,files,'email-one')).added,1);
+  const first=store.db.prepare('SELECT * FROM posts').get();
+  store.db.prepare("UPDATE posts SET caption='Manually edited',status='deleted' WHERE id=?").run(first.id);
+  assert.equal((await ingest(store,payload,files,'email-two')).duplicates,1);
+  const fresh={...payload,posts:[{...payload.posts[0],caption:'Completely new campaign'}]};
+  assert.equal((await ingest(store,fresh,files,'email-three')).added,1);
+  assert.equal((await ingest(store,fresh,files,'email-four')).duplicates,1);
+  assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM posts').get().n,2);
+});
 test('one concurrent publisher claims a post and stores Facebook IDs',async t=>{
   const {store,buffer}=await fixture(t);await ingest(store,payload,[{filename:'post_1.png',contentType:'image/png',content:buffer}]);
   store.saveSettings({...store.settings(),pageId:'123',facebookToken:'secret-token'});

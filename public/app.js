@@ -79,7 +79,7 @@ document.addEventListener('click',e=>{
   });
 });
 $('#search').addEventListener('input',renderPosts);$('#open-import').onclick=openImport;$('#empty-import').onclick=openImport;
-$('#sync').onclick=()=>busy($('#sync'),async()=>{const r=await api('/sync',{method:'POST',body:{}});toast(r.busy?'المزامنة شغالة بالفعل.':`وصل ${r.added} بوست جديد للمراجعة.`);await refresh();});
+$('#sync').onclick=()=>busy($('#sync'),async()=>{const r=await api('/sync',{method:'POST',body:{}});toast(r.busy?'المزامنة شغالة بالفعل.':`وصل ${r.added} بوست جديد للمراجعة. ${r.duplicates} بنفس المحتوى، و${r.issues} يحتاج إصلاح صورة.`);await refresh();});
 $('#settings-form').onsubmit=e=>{e.preventDefault();busy(e.submitter,async()=>{await saveSettings();toast('الإعدادات اتحفظت.');});};
 $('#connect-google').onclick=()=>busy($('#connect-google'),async()=>{await saveSettings();const r=await api('/google/connect',{method:'POST',body:{}});window.location.assign(r.url);});
 $('#disconnect-google').onclick=()=>busy($('#disconnect-google'),async()=>{await api('/google/disconnect',{method:'POST',body:{}});await refresh();renderSettings();toast('تم فصل Gmail محليًا.');});
