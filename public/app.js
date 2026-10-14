@@ -6,7 +6,7 @@ function toast(message,error=false){clearTimeout(toastTimer);$('#toast').textCon
 async function api(path,{method='GET',body}={}) {
   const form=body instanceof FormData;
   const r=await fetch('/api'+path,{method,headers:{...(method!=='GET'?{'X-CSRF-Token':csrf}:{}),...(!form && body?{'Content-Type':'application/json'}:{})},...(body?{body:form?body:JSON.stringify(body)}:{})});
-  const data=await r.json();if(!r.ok)throw new Error(data.error || 'تعذر تنفيذ العملية.');return data;
+  if(r.status===401){location.replace('/login');throw new Error('سجّل الدخول من جديد.');}const data=await r.json();if(!r.ok)throw new Error(data.error || 'تعذر تنفيذ العملية.');return data;
 }
 async function busy(button,work){const old=button.textContent;button.disabled=true;button.textContent='لحظة…';try{return await work();}catch(e){toast(e.message,true);return null;}finally{button.disabled=false;button.textContent=old;}}
 function formatDate(value){return new Intl.DateTimeFormat('ar-EG',{dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Cairo'}).format(new Date(value));}
@@ -34,6 +34,12 @@ function renderSettings(){
 }
 async function refresh(){
   const b=await api('/bootstrap');csrf=b.csrf;settings=b.settings;
+  if(b.runtime?.cloud){
+    $('#runtime-note').textContent='نسخة سحابية · النشر بعد موافقتك';
+    $('#runtime-label').textContent='اتصال سحابي';
+    $('#schedule-panel small').textContent='اختار أي موعد يناسبك. النسخة السحابية تحتاج تشغيل مهمة المزامنة والجدولة كل دقيقة.';
+    $('#settings-form').elements.autoSync.closest('label').lastChild.textContent=' مزامنة تلقائية عند تشغيل المهمة السحابية';
+  }
   $('#sync-status').textContent=b.sync.running?'جاري مزامنة الإيميلات…':b.sync.lastError || (b.sync.lastSync?'آخر مزامنة: '+formatDate(b.sync.lastSync):'لم تتم المزامنة بعد');
   posts=await api('/posts');renderPosts();
 }
@@ -111,10 +117,12 @@ $('#schedule-post').onclick=()=>busy($('#schedule-post'),async()=>{
   const localTime=$('#schedule-time').value;
   if(!localTime)throw new Error('اختار تاريخ ووقت النشر.');
   await saveEdit();$('#schedule-time').value=localTime;
-  if(!(await confirmAction('تأكيد الجدولة','هيتنشر البوست تلقائيًا يوم '+localTime.replace('T',' الساعة ')+' بتوقيت القاهرة على صفحة '+settings.pageId+'. خلي الجهاز والبرنامج شغالين.')))return;
+  if(!(await confirmAction('تأكيد الجدولة','هيتنشر البوست تلقائيًا يوم '+localTime.replace('T',' الساعة ')+' بتوقيت القاهرة على صفحة '+settings.pageId+'. تأكد من تشغيل البرنامج المحلي أو المهمة السحابية.')))return;
   const id=selected.id;await api('/posts/'+id+'/schedule',{method:'POST',body:{approved:true,localTime}});
   await refresh();openReview(id);toast('تمت جدولة البوست بتوقيت القاهرة.');
 });
 $('#cancel-schedule').onclick=()=>busy($('#cancel-schedule'),async()=>{
   const id=selected.id;await api('/posts/'+id+'/cancel-schedule',{method:'POST',body:{}});await refresh();openReview(id);toast('اتلغت الجدولة. تقدر تعدّل وتختار موعد جديد.');
 });
+
+$('#logout').onclick=()=>busy($('#logout'),async()=>{await api('/auth/logout',{method:'POST',body:{}});location.replace('/login');});

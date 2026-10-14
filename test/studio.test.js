@@ -20,16 +20,16 @@ test('Cairo scheduling respects DST, approval, due times and missed deadlines',a
   await ingest(store,payload,[{filename:'post_1.png',contentType:'image/png',content:buffer}]);
   store.saveSettings({...store.settings(),pageId:'123',facebookToken:'secret'});
   const p=store.db.prepare('SELECT * FROM posts').get(),at=Date.parse(cairoTime('2030-12-01T20:00'));
-  schedulePost(store,p.id,'2030-12-01T20:00',at-600000);
+  await schedulePost(store,p.id,'2030-12-01T20:00',at-600000);
   let calls=0;const request=async()=>{calls++;return Response.json({id:'987'});};
   await assert.rejects(publishPost(store,p.id,request));
   await processDue(store,request,at-1);assert.equal(calls,0);
   await processDue(store,request,at);await processDue(store,request,at+1000);assert.equal(calls,1);
   store.db.prepare("UPDATE posts SET status='pending' WHERE id=?").run(p.id);
-  schedulePost(store,p.id,'2030-12-01T20:00',at-600000);
+  await schedulePost(store,p.id,'2030-12-01T20:00',at-600000);
   await processDue(store,request,at+120000);assert.equal(calls,1);
   assert.equal(store.db.prepare('SELECT status FROM posts').get().status,'missed');
-  schedulePost(store,p.id,'2030-12-01T20:00',at-600000);
+  await schedulePost(store,p.id,'2030-12-01T20:00',at-600000);
   store.saveSettings({...store.settings(),pageId:'456'});
   await processDue(store,request,at);assert.equal(calls,1);
   assert.equal(store.db.prepare('SELECT status FROM posts').get().status,'failed');
@@ -98,7 +98,7 @@ test('ambiguous upload is held without automatic retries; definite Graph failure
   const failed=await publishPost(store,post.id,async()=>Response.json({error:{code:190}},{status:400}));assert.equal(failed.status,'failed');
 });
 test('HTTP blocks cross-origin mutation, hides secrets, and requires approval',async t=>{
-  const directory=await mkdtemp(join(tmpdir(),'nuvexa-http-'));const studio=createApp({directory,port:3219});
+  const directory=await mkdtemp(join(tmpdir(),'nuvexa-http-'));const studio=createApp({directory,port:3219,auth:false});
   const server=await new Promise(resolve=>{const s=studio.app.listen(3219,'127.0.0.1',()=>resolve(s));});
   t.after(async()=>{await new Promise(r=>server.close(r));studio.close();await cleanFixture(directory);});
   const base='http://127.0.0.1:3219';

@@ -4,8 +4,8 @@ Set-Location -LiteralPath $PSScriptRoot
 $taskUrl = 'http://127.0.0.1:3210'
 $taskReady = $false
 try {
-    $taskResponse = Invoke-RestMethod -Uri "$taskUrl/api/bootstrap" -TimeoutSec 2
-    $taskReady = $null -ne $taskResponse.settings
+    $taskResponse = Invoke-RestMethod -Uri "$taskUrl/api/auth/session" -TimeoutSec 2
+    $taskReady = $null -ne $taskResponse.csrf
 } catch { }
 if (-not $taskReady) {
     $taskNode = (Get-Command node -ErrorAction Stop).Source
@@ -19,8 +19,8 @@ if (-not $taskReady) {
     for ($taskAttempt = 0; $taskAttempt -lt 30; $taskAttempt++) {
         Start-Sleep -Milliseconds 500
         try {
-            $taskResponse = Invoke-RestMethod -Uri "$taskUrl/api/bootstrap" -TimeoutSec 2
-            if ($null -ne $taskResponse.settings) { $taskReady = $true; break }
+            $taskResponse = Invoke-RestMethod -Uri "$taskUrl/api/auth/session" -TimeoutSec 2
+            if ($null -ne $taskResponse.csrf) { $taskReady = $true; break }
         } catch { }
     }
     if (-not $taskReady) { throw 'NUVEXA did not start. See data/server-error.log.' }

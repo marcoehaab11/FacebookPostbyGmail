@@ -4,18 +4,20 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.13"
+    "node": "24.x"
   },
   "scripts": {
     "start": "node server.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "@vercel/blob": "^2.8.2",
     "express": "^5.1.0",
     "google-auth-library": "^10.3.0",
+    "jpeg-js": "^0.4.4",
     "mailparser": "^3.7.4",
     "multer": "^2.0.2",
-    "jpeg-js": "^0.4.4",
     "pngjs": "^7.0.0",
     "undici": "^7.16.0"
   }

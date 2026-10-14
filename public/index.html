@@ -6,10 +6,10 @@
     <a class="brand" href="/" aria-label="NUVEXA الرئيسية"><span class="brand-mark">N</span><span>NUVEXA<small>POST STUDIO</small></span></a>
     <div class="nav-caption">مساحة العمل</div>
     <nav><button class="nav-item active" data-view="queue"><span>▦</span> مراجعة البوستات <b id="nav-count">0</b></button><button class="nav-item" data-view="activity"><span>◷</span> سجل النشاط</button><button class="nav-item" data-view="settings"><span>⚙</span> الإعدادات والربط</button></nav>
-    <div class="sidebar-bottom"><span class="local-dot"></span> يعمل على جهازك فقط<small>الموافقة مطلوبة قبل كل نشر</small></div>
+    <div id="runtime-note" class="sidebar-bottom"><span class="local-dot"></span> يعمل على جهازك فقط<small>الموافقة مطلوبة قبل كل نشر</small></div>
   </aside>
   <main>
-    <header class="topbar"><div class="breadcrumb">NUVEXA PROPERTIES <span>/</span> مساحة النشر</div><div class="top-status"><span class="local-dot"></span> اتصال محلي <span class="avatar">NE</span></div></header>
+    <header class="topbar"><div class="breadcrumb">NUVEXA PROPERTIES <span>/</span> مساحة النشر</div><div class="top-status"><span class="local-dot"></span> <span id="runtime-label">اتصال محلي</span> <button id="logout" class="text-button">خروج</button><span class="avatar">NE</span></div></header>
     <section id="queue-view" class="view">
       <div class="page-heading"><div><div class="eyebrow">CONTENT WORKSPACE</div><h1>كل بوست، يستاهل مراجعة.</h1><p>راجع الصورة والكلام. عدّل اللي محتاج تعديل، وانشر لما تكون جاهز.</p></div><div class="heading-actions"><button id="sync" class="button secondary">↻ مزامنة الإيميلات</button><button id="open-import" class="button primary">＋ إضافة بوستات</button></div></div>
       <div class="stats"><article><span>بانتظار المراجعة</span><strong id="stat-pending">0</strong><small>محتوى جاهز لعينك</small></article><article><span>تم النشر</span><strong id="stat-published">0</strong><small>وصل لصفحتك بنجاح</small></article><article><span>يحتاج انتباه</span><strong id="stat-issues">0</strong><small>راجع الصورة أو حالة النشر</small></article><article class="safety-card"><span class="shield">✓</span><div><b>أنت صاحب القرار</b><small>مفيش بوست بيتنشر من غير موافقتك.</small></div></article></div>
