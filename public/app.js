@@ -69,6 +69,7 @@ function openReview(id){
   $('#scheduled-description').textContent=selected.scheduled_at?'موعد النشر: '+formatDate(selected.scheduled_at)+' بتوقيت القاهرة. '+(selected.status==='scheduled'?'جدولة قديمة على البرنامج: تقدر تنقلها إلى Facebook بالزر أدناه.':'Facebook مسؤول عن النشر. للتعديل ألغِ الجدولة من Facebook أولًا.'):'';
   $('#schedule-post').disabled=$('#approve').disabled;
   $('#schedule-post').textContent=selected.status==='scheduled'?'نقل الجدولة إلى Facebook':'◷ وافق وجدول على Facebook';
+  if(selected.status==='scheduled' && selected.scheduled_at)$('#schedule-time').value=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Cairo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(selected.scheduled_at)).replace(' ','T');
   $('#check-facebook').classList.toggle('hidden',!['facebook_scheduled','facebook_schedule_uncertain'].includes(selected.status) || !selected.facebook_post_id);
   $('#cancel-schedule').classList.toggle('hidden',selected.status==='facebook_schedule_uncertain' && !selected.facebook_post_id);
   $('#review-checks').innerHTML=`<span>${selected.image?'✓ الصورة اتفحصت واتحفظت محليًا':'○ أضف صورة صالحة قبل النشر'}</span><span>✓ الكلام موجود · راجعه بنفسك قبل الموافقة</span><span>${settings.pageId && settings.hasFacebookToken?'✓ صفحة النشر: '+escape(settings.pageId):'○ أكمل ربط Facebook من الإعدادات'}</span><span>✓ منع تكرار البوست مفعّل</span>`;
