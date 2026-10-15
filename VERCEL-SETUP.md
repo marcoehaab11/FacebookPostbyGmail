@@ -38,9 +38,11 @@ https://your-project.vercel.app/auth/google/callback
 
 Sign into the website, open Settings and reconnect Gmail if necessary. Existing Google refresh tokens can be transferred, but a token can still expire or be revoked; Testing-mode OAuth commonly needs reconnection. Facebook tokens likewise keep their existing lifetime and permissions. Cloud hosting does not renew either service's access automatically.
 
-## 5. Unattended Gmail sync and publishing
+## 5. Native Facebook scheduling and unattended Gmail sync
 
-Call `GET https://your-project.vercel.app/api/jobs/tick` **every minute** using `Authorization: Bearer <CRON_SECRET>`. The endpoint is protected independently of browser login and has persistent job/Gmail locks. It processes one due post per invocation, then does a bounded Gmail sync. Partial email batches resume on later invocations without duplicating posts.
+New schedules upload unpublished photo media, create a Facebook feed post with `published=false`, `unpublished_content_type=SCHEDULED` and `scheduled_publish_time`, and verify the returned post ID and time. **Facebook publishes these schedules without Vercel cron or a running computer.** The app allows 11 minutes to 28 days ahead as a conservative window; Meta is the final authority on accepting a time. Cancel a schedule from the app or Meta Planner before editing it. Local-only delete is blocked while a Facebook schedule is active. Unknown create/cancel outcomes are held for manual reconciliation, never retried automatically.
+
+For automatic Gmail intake and status updates, call `GET https://your-project.vercel.app/api/jobs/tick` **every minute** using `Authorization: Bearer <CRON_SECRET>`. The endpoint is protected independently of browser login and has persistent job/Gmail locks. It reads due Facebook post statuses (never reposting them), processes at most one legacy local schedule, then does a bounded Gmail sync. Partial email batches resume on later invocations without duplicating posts.
 
 On Vercel **Pro**, add this entry to `vercel.json` and redeploy:
 
@@ -50,7 +52,7 @@ On Vercel **Pro**, add this entry to `vercel.json` and redeploy:
 
 Vercel sends the configured `CRON_SECRET` automatically. On Hobby, use an external scheduler that supports a one-minute interval and a secret Authorization header; Hobby's native cron only runs daily. Do not put the secret in a query parameter. No cron is included by default, so importing the repository on Hobby will not fail a per-minute-cron plan check.
 
-Cloud scheduling allows up to five minutes of invocation delay. Older schedules become “missed” and need manual review. Ambiguous Facebook responses are never automatically retried. Space scheduled posts at least one minute apart; a large backlog may need review. Persistent locks stop overlapping jobs, but provider outages and delayed invocations can still affect delivery time.
+Only legacy local schedules depend on the job and its five-minute delay window; they remain supported until manually transferred with the “Move schedule to Facebook” button. New native schedules are independent of this job. Facebook publication status in the local dashboard updates with the “Check Facebook” button or a later job invocation. A failed read does not recreate the post.
 
 ## 6. Phone and final checks
 
@@ -59,3 +61,5 @@ Open the Production HTTPS URL on your phone and sign in with the configured admi
 Cloud deployment and real storage/cron verification require your Vercel/Turso account configuration; local tests use temporary databases and mocked image storage/Facebook responses and do not publish to Facebook.
 
 References: [Vercel Express](https://vercel.com/kb/guide/ship-a-express-app-on-vercel), [Private Blob SDK](https://vercel.com/docs/vercel-blob/using-blob-sdk), [Cron limits](https://vercel.com/docs/cron-jobs/usage-and-pricing), [Cron security](https://vercel.com/docs/cron-jobs/manage-cron-jobs), [libSQL client](https://tursodatabase.github.io/libsql-client-ts/).
+
+Native scheduling parameter reference: [Meta official SDK: Page feed](https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/adobjects/page.py), [Meta official SDK: Post](https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/adobjects/post.py).

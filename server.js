@@ -9,11 +9,12 @@ import { createStore } from './lib/store.js';
 import { ingest } from './lib/intake.js';
 import { downloadImage,saveImage,imageBuffer,MAX_IMAGE } from './lib/images.js';
 import { gmailService } from './lib/gmail.js';
-import { schedulePost,processDue } from './lib/scheduler.js';
+import { processDue } from './lib/scheduler.js';
+import { scheduleOnFacebook,cancelFacebookSchedule,checkFacebookSchedule,refreshFacebookSchedules } from './lib/facebook-schedule.js';
 import { publishPost } from './lib/publisher.js';
 
 const root=dirname(fileURLToPath(import.meta.url));
-export function createApp({directory=join(root,'data'),port=3210,request=fetch,providedStore,appUrl,auth=true,authConfig,cronSecret=process.env.CRON_SECRET}={}) {
+export function createApp({directory=join(root,'data'),port=3210,request=fetch,providedStore,appUrl,auth=true,authConfig,cronSecret=process.env.CRON_SECRET,backgroundJobs=true}={}) {
   const app=express(),store=providedStore || createStore(directory),baseUrl=(appUrl || `http://127.0.0.1:${port}`).replace(/\/$/,''),gmail=gmailService(store,baseUrl);
   const cloud=!!store.cloud;directory=store.directory;
   if(!cloud)mkdirSync(join(directory,'images'),{recursive:true});
@@ -79,8 +80,8 @@ export function createApp({directory=join(root,'data'),port=3210,request=fetch,p
     (await store.event(p.id,'edited','تم حفظ التعديلات وإعادته للمراجعة.'));res.json({ok:true});
   });
   app.delete('/api/posts/:id',async(req,res)=>{
-    const r=(await store.db.prepare("UPDATE posts SET status='deleted',scheduled_at=NULL,updated_at=? WHERE id=? AND status NOT IN ('publishing','deleted')").run(new Date().toISOString(),req.params.id));
-    if(!r.changes)throw new Error('لا يمكن حذف البوست أثناء النشر أو بعد حذفه.');
+    const r=(await store.db.prepare("UPDATE posts SET status='deleted',scheduled_at=NULL,updated_at=? WHERE id=? AND status NOT IN ('publishing','deleted','facebook_scheduling','facebook_scheduled','facebook_cancelling','facebook_schedule_uncertain')").run(new Date().toISOString(),req.params.id));
+    if(!r.changes)throw new Error('لا يمكن حذف البوست الآن. لو مجدول على Facebook، ألغِ جدولته أولًا.');
     (await store.event(req.params.id,'deleted','تم حذف البوست من البرنامج وإلغاء أي جدولة. نسخة Facebook إن وجدت تظل على الصفحة.'));
     res.json({ok:true});
   });
@@ -90,24 +91,27 @@ export function createApp({directory=join(root,'data'),port=3210,request=fetch,p
   });
   app.post('/api/posts/:id/schedule',async(req,res)=>{
     if(req.body.approved!==true)throw new Error('الموافقة اليدوية مطلوبة.');
-    res.json(await schedulePost(store,req.params.id,req.body.localTime));
+    res.json(await scheduleOnFacebook(store,req.params.id,req.body.localTime,request));
   });
   app.post('/api/posts/:id/cancel-schedule',async(req,res)=>{
+    const p=await store.db.prepare('SELECT status FROM posts WHERE id=?').get(req.params.id);
+    if(['facebook_scheduled','facebook_schedule_uncertain'].includes(p?.status))return res.json(await cancelFacebookSchedule(store,req.params.id,request));
     const r=(await store.db.prepare("UPDATE posts SET status='pending',scheduled_at=NULL,updated_at=? WHERE id=? AND status='scheduled'").run(new Date().toISOString(),req.params.id));
     if(!r.changes)throw new Error('الجدولة اتنفذت أو اتلغت بالفعل.');
     (await store.event(req.params.id,'schedule_cancelled','تم إلغاء الجدولة وإعادة البوست للمراجعة.'));res.json({ok:true});
   });
+  app.post('/api/posts/:id/check-facebook',async(req,res)=>res.json(await checkFacebookSchedule(store,req.params.id,request)));
   app.post('/api/posts/:id/publish',async(req,res)=>{
     if(req.body.approved!==true)throw new Error('الموافقة اليدوية مطلوبة.');
     res.json(await publishPost(store,req.params.id,request));
   });
   app.post('/api/posts/:id/reconcile',async(req,res)=>{
     const p=(await store.db.prepare('SELECT * FROM posts WHERE id=?').get(req.params.id));
-    if(p?.status!=='uncertain' || req.body.checked!==true)throw new Error('راجع صفحة Facebook أولًا.');
+    if(!['uncertain','facebook_schedule_uncertain'].includes(p?.status) || req.body.checked!==true)throw new Error('راجع صفحة Facebook ومخطط Meta أولًا.');
     if(req.body.result==='published') {
       if(!/^[\d_]+$/.test(req.body.photoId || ''))throw new Error('أدخل رقم الصورة الذي ظهر في Facebook.');
-      (await store.db.prepare("UPDATE posts SET status='published',photo_id=?,issue=NULL,updated_at=? WHERE id=? AND status='uncertain'").run(req.body.photoId,new Date().toISOString(),p.id));
-    }else if(req.body.result==='not_published')(await store.db.prepare("UPDATE posts SET status='pending',issue=NULL,updated_at=? WHERE id=? AND status='uncertain'").run(new Date().toISOString(),p.id));
+      (await store.db.prepare("UPDATE posts SET status='published',photo_id=?,issue=NULL,updated_at=? WHERE id=? AND status IN ('uncertain','facebook_schedule_uncertain')").run(req.body.photoId,new Date().toISOString(),p.id));
+    }else if(req.body.result==='not_published')(await store.db.prepare("UPDATE posts SET status='pending',scheduled_at=NULL,facebook_post_id=NULL,photo_id=NULL,issue=NULL,updated_at=? WHERE id=? AND status IN ('uncertain','facebook_schedule_uncertain')").run(new Date().toISOString(),p.id));
     else throw new Error('اختر نتيجة المراجعة.');
     (await store.event(p.id,'reconciled','تم تسجيل نتيجة مراجعة Facebook يدويًا.'));res.json({ok:true});
   });
@@ -122,6 +126,8 @@ export function createApp({directory=join(root,'data'),port=3210,request=fetch,p
     if(!lock.changes)return res.json({busy:true});
     try{
       await store.db.prepare("UPDATE posts SET status='uncertain',issue='انقطع النشر. راجع Facebook قبل إعادة المحاولة.' WHERE status='publishing' AND updated_at<?").run(new Date(now-300000).toISOString());
+      await store.db.prepare("UPDATE posts SET status='facebook_schedule_uncertain',issue='انقطع الاتصال أثناء الجدولة أو الإلغاء. راجع مخطط Meta قبل المحاولة.' WHERE status IN ('facebook_scheduling','facebook_cancelling') AND updated_at<?").run(new Date(now-300000).toISOString());
+      await refreshFacebookSchedules(store,request);
       await processDue(store,request);
       const s=await store.settings();const sync=s.autoSync && s.googleTokens && s.allowedSender?await gmail.sync():null;
       res.json({ok:true,sync});
@@ -133,8 +139,8 @@ export function createApp({directory=join(root,'data'),port=3210,request=fetch,p
     res.status(400).json({error:message});
   });
   let scheduling=false;
-  const scheduleTimer=cloud?null:setInterval(async()=>{if(scheduling)return;scheduling=true;try{await processDue(store,request);}catch(e){await store.event(null,'scheduler_error','تعذر تنفيذ الجدولة.');}finally{scheduling=false;}},5000);scheduleTimer?.unref();
-  const timer=cloud?null:setInterval(async()=>{const s=(await store.settings());if(s.autoSync && s.googleTokens && s.allowedSender)gmail.sync().catch(()=>{});},60000);timer?.unref();
+  const scheduleTimer=cloud || !backgroundJobs?null:setInterval(async()=>{if(scheduling)return;scheduling=true;try{await processDue(store,request);}catch(e){await store.event(null,'scheduler_error','تعذر تنفيذ الجدولة.');}finally{scheduling=false;}},5000);scheduleTimer?.unref();
+  const timer=cloud || !backgroundJobs?null:setInterval(async()=>{const s=(await store.settings());if(s.autoSync && s.googleTokens && s.allowedSender)gmail.sync().catch(()=>{});},60000);timer?.unref();
   return {app,store,gmail,close:()=>{clearInterval(timer);clearInterval(scheduleTimer);store.db.close();}};
 }
 if(process.argv[1]===fileURLToPath(import.meta.url)) {
